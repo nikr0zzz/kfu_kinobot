@@ -1,0 +1,25 @@
+import telebot
+
+
+bot = telebot.TeleBot('1371212624:AAEg-6IOZt7DKORFcoP1CqIF21ZEDLzlal8')
+
+keyboard1 = telebot.types.ReplyKeyboardMarkup()
+keyboard1.row('Привет', 'Пока')
+
+
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    bot.send_message(message.chat.id, 'Привет, ты написал мне /start', reply_markup=keyboard1)
+
+
+@bot.message_handler(content_types=['text'])
+def send_text(message):
+    import prs
+    film = message.text.lower()
+    films = prs.parse(film)
+    bot.send_photo(message.chat.id, films['poster'])
+    bot.send_message(message.chat.id, str(films['url'])+'\n'+str(films['description']))
+
+
+
+bot.polling()
