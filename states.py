@@ -7,3 +7,8 @@ class Start_Menu(StatesGroup):
 class Choose_Func(StatesGroup):
     search_film = State()
     search_person = State()
+
+class Film_Menu(StatesGroup):
+    person_ready = State()
+    go_to_favor = State()
+    film_ready = State()
