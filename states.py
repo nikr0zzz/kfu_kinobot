@@ -7,6 +7,12 @@ class Start_Menu(StatesGroup):
 class Choose_Func(StatesGroup):
     search_film = State()
     search_person = State()
+    search_on_filter = State()
+
+class Filter_Menu(StatesGroup):
+    choose_genre = State()
+    choose_year = State()
+    choose_rate = State()
 
 class Film_Menu(StatesGroup):
     person_ready = State()

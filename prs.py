@@ -1,9 +1,14 @@
 import requests
 import re
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.support.select import Select
+import time
 
+filter_films = {}
 films_content = {}
 persons_content = {}
+filters_content = {'type': '', 'genre': ' ', 'year': '', 'rate': '' }
 URL = 'https://ru.kinorium.com'
 HEADERS = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
            'accept': '*/*'}
@@ -11,6 +16,7 @@ HEADERS = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 def get_html(url, params=None):
     r = requests.get(url=url, headers=HEADERS, params=params)
+    time.sleep(5)
     return r
 
 
@@ -19,6 +25,40 @@ def get_film_urls(html):
     soup = BeautifulSoup(html, 'lxml')
     film_url = URL + soup.find('h3', class_='search-page__item-title link-info-movie').find_next('a', class_='search-page__title-link search-page__item-title-text').get('href')
     return get_film_content(film_url)
+
+
+def get_url_filter():
+    url = 'https://ru.kinorium.com/R2D2/?order=rating&page=1&perpage=20'
+    print(filters_content)
+    url += '&genres%5B%5D={}'.format(filters_content['genre'])
+    if filters_content['type'] == 'Фильмы':
+        url += '&nav_type%5B%5D=movie'
+    elif filters_content['type'] == 'Сериалы':
+        url += '&nav_type%5B%5D=serial'
+    elif filters_content['type'] == 'Мультфильмы':
+        url += '&nav_type%5B%5D=animation'
+    year_from = filters_content['year'][:4]
+    year_to = filters_content['year'][5:]
+    url += '&years_min={}&years_max={}'.format(year_from, year_to)
+    url += '&imdb_rating_min={}'.format(filters_content['rate'][-1])
+    url += '&mode=poster'
+    print(url)
+    return url
+
+
+def get_urls_from_filter(url):
+    driver = webdriver.Chrome()
+    driver.get(url)
+    time.sleep(1)
+    filter_page = driver.page_source
+    driver.close()
+    driver.quit()
+    filter_soup = BeautifulSoup(filter_page, 'lxml')
+    names = filter_soup.find_all('div', class_='statusWidgetData')
+    filter_films['urls'] = [u.get('href') for u in names]
+    filter_films['names'] = [name.get('data-moviename') for name in names]
+    print(filter_films)
+    return filter_films
 
 
 def get_film_content(url):
@@ -75,21 +115,28 @@ def get_person_content(url):
     persons_content['photo'] = person_soup.find('div', class_='person_portrait').find_next('img').get('src')
     if person_soup.find('span', class_='age'):
         persons_content['age'] = person_soup.find('span', class_='age').text.replace('•', '').strip() + \
-                             '\n' + person_soup.find('a', {'itemprop': 'birthDate'}).text.strip()
+                             '\n\n' + person_soup.find('a', {'itemprop': 'birthDate'}).text.strip()
     if person_soup.find('span', {'itemprop': 'deathDate'}):
         persons_content['age'] += ' - ' + person_soup.find('span', {'itemprop': 'deathDate'}).text.strip()
     profs = person_soup.find_all('li', {'itemprop': 'jobTitle'})
     persons_content['prof'] = [prof.find_next('span').text.strip() for prof in profs]
     if person_soup.find('a', {'data-original-url': re.compile('https://maps.google.com/maps')}):
         persons_content['country'] = person_soup.find('a', {'data-original-url': re.compile('https://maps.google.com/maps')}).text
-    if person_soup.find('div', class_='textstart away-transparency_bottom'):
-        description = person_soup.find('div', class_='textstart away-transparency_bottom').find_all_next('p')
-        persons_content['description'] = ''
-        for i in range(5):
-            persons_content['description'] += description[i].text
-        persons_content['description'] = persons_content['description'][:300]
-        idx = persons_content['description'].rfind('.')
-        persons_content['description'] = persons_content['description'][:idx]
+    awards = person_soup.find_all('a', class_='movieAwards__item')
+    persons_content['awards'] = []
+    for award in awards:
+        film_dict = {}
+        award_name = award.find('span', class_='title').text.strip()
+        film_dict['name'] = award_name
+        if award.find('span', class_='wins'):
+            film_dict['wins'] = award.find('span', class_='wins').text.strip()
+        else:
+            film_dict['wins'] = ''
+        if award.find('span', class_='noms'):
+            film_dict['noms'] = award.find('span', class_='noms').text.strip()
+        else:
+            film_dict['noms'] = ''
+        persons_content['awards'].append(film_dict)
     best_films_urls = person_soup.find_all('a', class_='link-info-movie-type-film')
     best_films_names = person_soup.find('a', class_='link-info-movie-type-film').find_all_next('span', class_='title cut_text')
     persons_content['best_films_urls'] = [URL+film.get('href') for film in best_films_urls]
