@@ -2,7 +2,6 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.support.select import Select
 import time
 
 filter_films = {}
@@ -16,7 +15,6 @@ HEADERS = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 def get_html(url, params=None):
     r = requests.get(url=url, headers=HEADERS, params=params)
-    time.sleep(5)
     return r
 
 
@@ -28,7 +26,7 @@ def get_film_urls(html):
 
 
 def get_url_filter():
-    url = 'https://ru.kinorium.com/R2D2/?order=rating&page=1&perpage=20'
+    url = 'https://ru.kinorium.com/R2D2/?order=rating&page=1&perpage=200'
     print(filters_content)
     url += '&genres%5B%5D={}'.format(filters_content['genre'])
     if filters_content['type'] == 'Фильмы':
@@ -49,13 +47,11 @@ def get_url_filter():
 def get_urls_from_filter(url):
     driver = webdriver.Chrome()
     driver.get(url)
-    time.sleep(1)
+    time.sleep(2)
     filter_page = driver.page_source
-    driver.close()
-    driver.quit()
     filter_soup = BeautifulSoup(filter_page, 'lxml')
     names = filter_soup.find_all('div', class_='statusWidgetData')
-    filter_films['urls'] = [u.get('href') for u in names]
+    filter_films['urls'] = [URL + u.get('href') for u in names]
     filter_films['names'] = [name.get('data-moviename') for name in names]
     print(filter_films)
     return filter_films
@@ -86,6 +82,10 @@ def get_film_content(url):
         films_content['description'] = films_content['description'][9:]
     else:
         films_content['description'] = "Ожидается в прокате"
+    if len(films_content['description']) > 800:
+        films_content['description'] = films_content['description'][:800]
+        idx = films_content['description'].rfind('.')
+        films_content['description'] = films_content['description'][:idx+1]
     print(films_content)
     return films_content
 
