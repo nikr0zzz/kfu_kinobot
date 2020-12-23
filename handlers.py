@@ -5,7 +5,14 @@ from bot import dp, bot
 import states
 import keyboards as kb
 import prs
+import database
 
+
+class Page:
+    film_pos = 0
+
+
+j = Page
 
 def get_film_caption(film):
     caption = hbold(film['name'] + ' ' + film['year'] + '\n' + ', '.join(film['genre']) + '\n' + ', '.join(film['country'])) + '\n' + \
@@ -21,13 +28,30 @@ def get_person_caption(person):
     return caption
 
 
-@dp.callback_query_handler(lambda call: True, state=states.Film_Menu.person_ready)
-async def film_callback(call: types.CallbackQuery):
-    film = prs.get_film_content(call.data)
-    caption = get_film_caption(film)
-    await bot.answer_callback_query(call.id)
-    await bot.send_photo(call.from_user.id,photo=film['poster'], caption=caption, parse_mode=types.ParseMode.HTML, reply_markup=kb.search_film_menu_kb)
 
+@dp.callback_query_handler(lambda call: True, state=[states.Film_Menu.person_ready, states.Film_Menu.filter_films_ready])
+async def film_callback(call: types.CallbackQuery):
+    if call.data in ['next', 'previous']:
+        j.film_pos = j.film_pos+5 if call.data == 'next' else j.film_pos-5
+        film_content = prs.filter_films
+        link_kb = types.InlineKeyboardMarkup()
+        if j.film_pos != 0:
+            link_kb.add(types.InlineKeyboardButton(text='⏪⏪ Назад', callback_data='previous'))
+        for i in range(j.film_pos, j.film_pos+5):
+            if i < len(film_content['names']):
+                link_kb.add(types.InlineKeyboardButton(text=film_content['names'][i], callback_data=film_content['urls'][i]))
+            else:
+                break
+        if len(film_content['names']) > (j.film_pos+5):
+            link_kb.add(types.InlineKeyboardButton(text='Далее ⏩⏩', callback_data='next'))
+        await bot.answer_callback_query(call.id)
+        await bot.send_message(call.from_user.id, f'Фильмы по вашему запросу: Cтраница {j.film_pos//5 + 1}', reply_markup=link_kb)
+    else:
+        film = prs.get_film_content(call.data)
+        caption = get_film_caption(film)
+        await bot.answer_callback_query(call.id)
+        await bot.send_photo(call.from_user.id, photo=film['poster'], caption=caption, parse_mode=types.ParseMode.HTML,
+                             reply_markup=kb.search_film_menu_kb_v2)
 
 @dp.message_handler(Command("start"), state=None)
 async def menu(message: types.Message):
@@ -46,12 +70,35 @@ async def find_person(message: types.Message):
     await message.answer('Введите название персоны', reply_markup=kb.back_kb)
     await states.Choose_Func.search_person.set()
 
-@dp.message_handler(lambda msg: msg.text in kb.button_search_on_filters.text, state=states.Start_Menu.start_menu)
+
+@dp.message_handler(lambda msg: msg.text in kb.button_back_to_filter.text,
+                    state=[states.Filter_Menu.choose_genre,
+                           states.Filter_Menu.choose_rate,
+                           states.Filter_Menu.choose_year])
+async def back_to_prev_filter(message: types.Message):
+    state = dp.current_state(user=message.from_user.id)
+    state = await state.get_state()
+    print(state)
+    if state == 'Filter_Menu:choose_genre':
+        await message.answer('Выберите тип', reply_markup=kb.choose_type_kb)
+        await states.Choose_Func.search_on_filter.set()
+    elif state == 'Filter_Menu:choose_year':
+        await message.answer('Выберите жанр', reply_markup=kb.choose_genre_kb)
+        await states.Filter_Menu.choose_genre.set()
+    elif state == 'Filter_Menu:choose_rate':
+        await message.answer('Выберите дату выхода', reply_markup=kb.choose_year_kb)
+        await states.Filter_Menu.choose_year.set()
+
+
+@dp.message_handler(lambda msg: msg.text in kb.button_search_on_filters.text,
+                    state=states.Start_Menu.start_menu)
 async def choose_filter_type(message: types.Message):
     await message.answer('Выберите тип', reply_markup=kb.choose_type_kb)
     await states.Choose_Func.search_on_filter.set()
 
-@dp.message_handler(lambda msg: msg.text in [kb.button_type_serial.text, kb.button_type_mfilm.text, kb.button_type_film.text], state=states.Choose_Func.search_on_filter)
+
+@dp.message_handler(lambda msg: msg.text in [kb.button_type_serial.text, kb.button_type_mfilm.text, kb.button_type_film.text],
+                    state=states.Choose_Func.search_on_filter)
 async def filter_type(message: types.Message):
     prs.filters_content['type'] = message.text
     await message.answer('Выберите жанр', reply_markup=kb.choose_genre_kb)
@@ -73,27 +120,49 @@ async def choose_filter_year(message: types.Message):
 @dp.message_handler(lambda msg: msg.text in kb.rates, state=states.Filter_Menu.choose_rate)
 async def choose_filter_rate(message: types.Message):
     prs.filters_content['rate'] = message.text
-    link_kb = types.InlineKeyboardMarkup()
-    link_kb.add(types.InlineKeyboardButton(text='film1', callback_data='film1'))
-    link_kb.add(types.InlineKeyboardButton(text='film2', callback_data='film2'))
-    link_kb.add(types.InlineKeyboardButton(text='film3', callback_data='film3'))
-    link_kb.add(types.InlineKeyboardButton(text='film4', callback_data='film4'))
-    link_kb.add(types.InlineKeyboardButton(text='film5', callback_data='film5'))
-    link_kb.add(types.InlineKeyboardButton(text='dalee', callback_data='film1'))
     url = prs.get_url_filter()
     prs.get_urls_from_filter(url)
-    await message.answer('url',reply_markup=link_kb)
+    film_content = prs.filter_films
+    link_kb = types.InlineKeyboardMarkup()
+    for i in range(j.film_pos, j.film_pos+5):
+        if i < len(film_content['names']):
+            link_kb.add(types.InlineKeyboardButton(text=film_content['names'][i], callback_data=film_content['urls'][i]))
+        else:
+            break
+    if len(film_content['names']) > 5:
+        link_kb.add(types.InlineKeyboardButton(text='⏩⏩ Далее ⏩⏩', callback_data='next'))
+    await message.answer('Фильмы по вашему запросу: Cтраница 1', reply_markup=link_kb)
+    await states.Film_Menu.filter_films_ready.set()
 
 
-@dp.message_handler(lambda msg: msg.text in kb.button_back_to_menu.text, state=[states.Choose_Func.search_film, states.Film_Menu.film_ready,states.Film_Menu.person_ready])
+@dp.message_handler(lambda msg: msg.text in kb.button_back_to_menu.text, state=[states.Choose_Func.search_film, states.Choose_Func.search_person, states.Film_Menu.film_ready,states.Film_Menu.person_ready,
+                                                                                states.Choose_Func.search_on_filter, states.Filter_Menu.choose_rate,states.Filter_Menu.choose_year,
+                                                                                states.Filter_Menu.choose_genre, states.Film_Menu.filter_films_ready])
 async def back_to_menu(message: types.Message):
     await message.answer('Подумай над выбором', reply_markup=kb.menu_kb)
     await states.Start_Menu.start_menu.set()
 
-@dp.message_handler(lambda msg: msg.text in kb.button_add_to_favor.text, state=states.Choose_Func.search_film)
+@dp.message_handler(lambda msg: msg.text in kb.button_get_favour.text, state=states.Start_Menu.start_menu)
+async def get_favour(message: types.Message):
+    user_id = message.from_user.id
+    s = '🌟Ваше избранное:🌟\n'
+    for row in database.cursor.execute("SELECT DISTINCT film FROM favour_films WHERE id = ?", (user_id,)):
+        s +=str(row)[2:-3].replace('\\xa0', ' ')+'\n'
+    await bot.send_message(message.from_user.id, s)
+    database.conn.commit()
+
+
+
+@dp.message_handler(lambda msg: msg.text in kb.button_add_to_favor.text, state=[states.Film_Menu.film_ready,
+                                                                                states.Film_Menu.person_ready,
+                                                                                states.Film_Menu.filter_films_ready])
 async def add_to_favor(message: types.Message):
     await message.answer('Добавлено в избранное !')
-    await states.Film_Menu.go_to_favor.set()
+    user_id = message.from_user.id
+    film = prs.films_content['name']
+    params = (user_id, film)
+    database.cursor.execute("INSERT INTO favour_films VALUES (?, ?)", params)
+    database.conn.commit()
 
 
 @dp.message_handler(state=states.Choose_Func.search_film)
@@ -110,9 +179,12 @@ async def searching_person(message: types.Message):
     person_name = message.text
     person = prs.seacrh_person(person_name)
     link_kb = types.InlineKeyboardMarkup()
-    link_kb.add(types.InlineKeyboardButton(text=person['best_films_names'][0], callback_data=person['best_films_urls'][0]))
-    link_kb.add(types.InlineKeyboardButton(text=person['best_films_names'][1], callback_data=person['best_films_urls'][1]))
-    link_kb.add(types.InlineKeyboardButton(text=person['best_films_names'][2], callback_data=person['best_films_urls'][2]))
+    for i in range(3):
+        if i < len(person['best_films_names']):
+            link_kb.add(
+                types.InlineKeyboardButton(text=person['best_films_names'][i], callback_data=person['best_films_urls'][i]))
+        else:
+            break
     caption = get_person_caption(person)
     await message.reply_photo(person['photo'], caption=caption, parse_mode=types.ParseMode.HTML, reply_markup=link_kb)
     await states.Film_Menu.person_ready.set()
