@@ -18,3 +18,4 @@ class Film_Menu(StatesGroup):
     person_ready = State()
     go_to_favor = State()
     film_ready = State()
+    filter_films_ready = State()
